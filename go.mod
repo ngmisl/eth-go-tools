@@ -2,7 +2,10 @@ module example.com/ethgotools
 
 go 1.22.4
 
-require github.com/ethereum/go-ethereum v1.14.7
+require (
+	github.com/ethereum/go-ethereum v1.14.7
+	github.com/joho/godotenv v1.5.1
+)
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
