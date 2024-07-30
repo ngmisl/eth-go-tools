@@ -83,11 +83,21 @@ func handleUserInput(reader *bufio.Reader) (PrivateKey, bool, error) {
 	return PrivateKey(input), false, nil
 }
 
+// New function to generate a private key
+func generatePrivateKey() (*ecdsa.PrivateKey, error) {
+	return crypto.GenerateKey()
+}
+
+// New function to convert ECDSA private key to hexadecimal string
+func privateKeyToHex(privateKey *ecdsa.PrivateKey) string {
+	return fmt.Sprintf("%x", crypto.FromECDSA(privateKey))
+}
+
 func mainMenu() {
 	fmt.Println("Ethereum Toolset")
 	fmt.Println("----------------")
 	fmt.Println("1. Private Key Converter")
-	fmt.Println("2. (Coming soon...)")
+	fmt.Println("2. Generate New Private Key")
 	fmt.Println("3. Quit")
 }
 
@@ -121,6 +131,30 @@ func privateKeyConverter(reader *bufio.Reader) {
 	}
 }
 
+func generateNewPrivateKey() {
+	privateKey, err := generatePrivateKey()
+	if err != nil {
+		fmt.Printf("Error generating private key: %v\n", err)
+		return
+	}
+
+	address, err := ConvertToAddress(privateKey)
+	if err != nil {
+		fmt.Printf("Error generating address: %v\n", err)
+		return
+	}
+
+	privateKeyHex := privateKeyToHex(privateKey)
+
+	fmt.Println("\nNew Ethereum Key Pair Generated:")
+	fmt.Printf("Private Key: %s\n", privateKeyHex)
+	fmt.Printf("Public Address: %s\n\n", address.Hex())
+	fmt.Printf("DeBank Explorer Link: https://debank.com/profile/%s\n", address.Hex())
+	fmt.Println("\nWARNING: Store this private key securely. Never share it with anyone!")
+	fmt.Println("Press Enter to continue...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
+}
+
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -137,6 +171,8 @@ func main() {
 		switch input {
 		case "1":
 			privateKeyConverter(reader)
+		case "2":
+			generateNewPrivateKey()
 		case "3":
 			fmt.Println(quitMessage)
 			return
