@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -98,7 +100,8 @@ func mainMenu() {
 	fmt.Println("----------------")
 	fmt.Println("1. Private Key Converter")
 	fmt.Println("2. Generate New Private Key")
-	fmt.Println("3. Quit")
+	fmt.Println("3. Run Forge Template Script")
+	fmt.Println("4. Quit")
 }
 
 func privateKeyConverter(reader *bufio.Reader) {
@@ -155,6 +158,46 @@ func generateNewPrivateKey() {
 	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
 
+func runForgeTemplateScript(reader *bufio.Reader) {
+	// Get the directory of the executable
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Error getting executable path: %v\n", err)
+		return
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// Construct the path to the script
+	scriptPath := filepath.Join(exeDir, "scripts", "forgetemplate.sh")
+
+	// Check if the script exists
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		fmt.Printf("Error: Script not found at %s\n", scriptPath)
+		return
+	}
+
+	// Ensure the script is executable
+	if err := os.Chmod(scriptPath, 0755); err != nil {
+		fmt.Printf("Error setting execute permission on script: %v\n", err)
+		return
+	}
+
+	// Run the script
+	cmd := exec.Command("/bin/bash", scriptPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Error running the script: %v\n", err)
+		return
+	}
+
+	fmt.Println("Forge template script executed successfully.")
+	fmt.Println("Press Enter to continue...")
+	reader.ReadString('\n')
+}
+
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -174,6 +217,8 @@ func main() {
 		case "2":
 			generateNewPrivateKey()
 		case "3":
+			runForgeTemplateScript(reader)
+		case "4":
 			fmt.Println(quitMessage)
 			return
 		default:
