@@ -1,228 +1,331 @@
+// app.go
+
 package main
 
 import (
-	"bufio"
-	"crypto/ecdsa"
-	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/common"
+	"example.com/ethgotools/airstack"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/joho/godotenv"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-const (
-	privateKeyLength = 64
-	promptMessage    = "Enter your Ethereum private key (%d hexadecimal characters) or 'q' to quit: "
-	emptyInputError  = "Private key cannot be empty"
-	invalidLenError  = "Private key must be exactly %d characters long"
-	invalidHexError  = "Private key must contain only hexadecimal characters"
-	quitMessage      = "Exiting the program. Goodbye!"
-)
-
-// PrivateKey is a type-safe representation of an Ethereum private key
-type PrivateKey string
-
-// String returns the underlying string value of the PrivateKey
-func (pk PrivateKey) String() string {
-	return string(pk)
+type model struct {
+	choices  []string
+	cursor   int
+	selected string
+	quitting bool
+	content  string
+	input    string
+	state    string
+	// err      error
 }
 
-// Validate checks if the private key is in the correct format
-func (pk PrivateKey) Validate() error {
-	if len(pk) == 0 {
-		return errors.New(emptyInputError)
+var titleStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("#7D56F4")).
+	Padding(0, 1)
+
+var menuStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("#FFA500"))
+
+var inputStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("#00FF7F"))
+
+func initialModel() model {
+	return model{
+		choices: []string{
+			"Convert Private Key to Address",
+			"Generate New Private Key",
+			"Check Farcaster Account",
+			"Quit",
+		},
+		state: "menu",
 	}
-	if len(pk) != privateKeyLength {
-		return fmt.Errorf(invalidLenError, privateKeyLength)
-	}
-	match, _ := regexp.MatchString("^[0-9a-fA-F]+$", pk.String())
-	if !match {
-		return errors.New(invalidHexError)
-	}
-	return nil
-}
-
-// ConvertToECDSA converts a private key to an ECDSA private key
-func ConvertToECDSA(privateKey PrivateKey) (*ecdsa.PrivateKey, error) {
-	if err := privateKey.Validate(); err != nil {
-		return nil, err
-	}
-	return crypto.HexToECDSA(privateKey.String())
-}
-
-// ConvertToAddress converts an ECDSA private key to an Ethereum address
-func ConvertToAddress(ecdsaPrivateKey *ecdsa.PrivateKey) (common.Address, error) {
-	publicKey := ecdsaPrivateKey.Public()
-	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return common.Address{}, errors.New("failed to get public key")
-	}
-	return crypto.PubkeyToAddress(*publicKeyECDSA), nil
-}
-
-// handleUserInput processes user input and returns a PrivateKey and a bool indicating if the user wants to quit
-func handleUserInput(reader *bufio.Reader) (PrivateKey, bool, error) {
-	fmt.Printf(promptMessage, privateKeyLength)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		if err == io.EOF {
-			return "", true, nil
-		}
-		return "", false, fmt.Errorf("failed to read input: %v", err)
-	}
-
-	input = strings.TrimSpace(input)
-	if input == "q" || input == "Q" {
-		return "", true, nil
-	}
-
-	return PrivateKey(input), false, nil
-}
-
-// New function to generate a private key
-func generatePrivateKey() (*ecdsa.PrivateKey, error) {
-	return crypto.GenerateKey()
-}
-
-// New function to convert ECDSA private key to hexadecimal string
-func privateKeyToHex(privateKey *ecdsa.PrivateKey) string {
-	return fmt.Sprintf("%x", crypto.FromECDSA(privateKey))
-}
-
-func mainMenu() {
-	fmt.Println("Ethereum Toolset")
-	fmt.Println("----------------")
-	fmt.Println("1. Private Key Converter")
-	fmt.Println("2. Generate New Private Key")
-	fmt.Println("3. Run Forge Template Script")
-	fmt.Println("4. Quit")
-}
-
-func privateKeyConverter(reader *bufio.Reader) {
-	for {
-		privateKey, quit, err := handleUserInput(reader)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		if quit {
-			fmt.Println(quitMessage)
-			break
-		}
-
-		ecdsaPrivateKey, err := ConvertToECDSA(privateKey)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		address, err := ConvertToAddress(ecdsaPrivateKey)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		fmt.Printf("Public Address: %s\n\n", address.Hex())
-		fmt.Printf("DeBank Explorer Link: https://debank.com/profile/%s\n", address.Hex())
-	}
-}
-
-func generateNewPrivateKey() {
-	privateKey, err := generatePrivateKey()
-	if err != nil {
-		fmt.Printf("Error generating private key: %v\n", err)
-		return
-	}
-
-	address, err := ConvertToAddress(privateKey)
-	if err != nil {
-		fmt.Printf("Error generating address: %v\n", err)
-		return
-	}
-
-	privateKeyHex := privateKeyToHex(privateKey)
-
-	fmt.Println("\nNew Ethereum Key Pair Generated:")
-	fmt.Printf("Private Key: %s\n", privateKeyHex)
-	fmt.Printf("Public Address: %s\n\n", address.Hex())
-	fmt.Printf("DeBank Explorer Link: https://debank.com/profile/%s\n", address.Hex())
-	fmt.Println("\nWARNING: Store this private key securely. Never share it with anyone!")
-	fmt.Println("Press Enter to continue...")
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
-}
-
-func runForgeTemplateScript(reader *bufio.Reader) {
-	// Get the directory of the executable
-	exePath, err := os.Executable()
-	if err != nil {
-		fmt.Printf("Error getting executable path: %v\n", err)
-		return
-	}
-	exeDir := filepath.Dir(exePath)
-
-	// Construct the path to the script
-	scriptPath := filepath.Join(exeDir, "scripts", "forgetemplate.sh")
-
-	// Check if the script exists
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		fmt.Printf("Error: Script not found at %s\n", scriptPath)
-		return
-	}
-
-	// Ensure the script is executable
-	if err := os.Chmod(scriptPath, 0755); err != nil {
-		fmt.Printf("Error setting execute permission on script: %v\n", err)
-		return
-	}
-
-	// Run the script
-	cmd := exec.Command("/bin/bash", scriptPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error running the script: %v\n", err)
-		return
-	}
-
-	fmt.Println("Forge template script executed successfully.")
-	fmt.Println("Press Enter to continue...")
-	reader.ReadString('\n')
 }
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("No .env file found or error loading it.")
+	}
 
-	for {
-		mainMenu()
-		fmt.Print("Choose an option: ")
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
+	p := tea.NewProgram(initialModel())
+	if err := p.Start(); err != nil {
+		fmt.Printf("Error running program: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.state {
+	case "menu":
+		return m.updateMenu(msg)
+	case "convert":
+		return m.updateConvert(msg)
+	case "generate":
+		return m.updateGenerate(msg)
+	case "farcaster":
+		return m.updateFarcaster(msg)
+	case "display":
+		if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
+			m.state = "menu"
+			m.content = ""
+			return m, nil
 		}
+		return m, nil
+	default:
+		return m, nil
+	}
+}
 
-		input = strings.TrimSpace(input)
-		switch input {
-		case "1":
-			privateKeyConverter(reader)
-		case "2":
-			generateNewPrivateKey()
-		case "3":
-			runForgeTemplateScript(reader)
-		case "4":
-			fmt.Println(quitMessage)
-			return
-		default:
-			fmt.Println("Invalid option. Please choose again.")
+func (m model) View() string {
+	switch m.state {
+	case "menu":
+		return m.viewMenu()
+	case "convert":
+		return m.viewConvert()
+	case "generate":
+		return m.viewGenerate()
+	case "farcaster":
+		return m.viewFarcaster()
+	case "display":
+		return m.viewDisplay()
+	default:
+		return "Unknown state"
+	}
+}
+
+func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.quitting = true
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		case "enter", " ":
+			m.selected = m.choices[m.cursor]
+			switch m.cursor {
+			case 0:
+				m.state = "convert"
+				m.input = ""
+				m.content = ""
+			case 1:
+				m.state = "generate"
+			case 2:
+				m.state = "farcaster"
+				m.input = ""
+				m.content = ""
+			case 3:
+				m.quitting = true
+				return m, tea.Quit
+			}
 		}
 	}
+
+	return m, nil
+}
+
+func (m model) viewMenu() string {
+	s := titleStyle.Render("Ethereum Tools Menu") + "\n\n"
+
+	for i, choice := range m.choices {
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		s += fmt.Sprintf("%s %s\n", cursor, menuStyle.Render(choice))
+	}
+
+	s += "\nPress q to quit.\n"
+
+	return s
+}
+
+func (m model) updateConvert(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			m.state = "menu"
+		case tea.KeyEnter:
+			if len(m.input) == 0 {
+				m.content = "Error: Private key cannot be empty."
+				return m, nil
+			}
+
+			privateKeyHex := strings.TrimSpace(m.input)
+			privateKey, err := crypto.HexToECDSA(privateKeyHex)
+			if err != nil {
+				m.content = fmt.Sprintf("Error converting private key: %v", err)
+				return m, nil
+			}
+
+			address := crypto.PubkeyToAddress(privateKey.PublicKey)
+			m.content = fmt.Sprintf("Ethereum Address: %s", address.Hex())
+			m.state = "display"
+			return m, nil
+		case tea.KeyRunes:
+			m.input += string(msg.Runes)
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.input) > 0 {
+				m.input = m.input[:len(m.input)-1]
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewConvert() string {
+	s := titleStyle.Render("Convert Private Key to Address") + "\n\n"
+	s += "Enter your Ethereum private key (in hex format) or press Esc to cancel:\n"
+	s += inputStyle.Render(m.input)
+	if m.content != "" {
+		s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+	}
+	return s
+}
+
+func (m model) updateGenerate(msg tea.Msg) (tea.Model, tea.Cmd) {
+	privateKey, err := crypto.GenerateKey()
+	if err != nil {
+		m.content = fmt.Sprintf("Error generating private key: %v", err)
+	} else {
+		privateKeyBytes := crypto.FromECDSA(privateKey)
+		privateKeyHex := fmt.Sprintf("%x", privateKeyBytes)
+		address := crypto.PubkeyToAddress(privateKey.PublicKey)
+		m.content = fmt.Sprintf("New Private Key: %s\nCorresponding Ethereum Address: %s\n\nWARNING: Store this private key securely. Never share it with anyone!", privateKeyHex, address.Hex())
+	}
+	m.state = "display"
+	return m, nil
+}
+
+func (m model) viewGenerate() string {
+	s := titleStyle.Render("Generate New Private Key") + "\n\n"
+	if m.content != "" {
+		s += m.content + "\n\nPress Enter to continue..."
+	}
+	return s
+}
+
+func (m model) updateFarcaster(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			m.state = "menu"
+		case tea.KeyEnter:
+			if len(m.input) == 0 {
+				m.content = "Error: Farcaster username cannot be empty."
+				return m, nil
+			}
+
+			// Start fetching data
+			m.content = "Waiting for answer..."
+			// Store the input locally to avoid race conditions
+			input := m.input
+			return m, func() tea.Msg {
+				// Perform API call here
+				client := airstack.NewClient()
+				apiKey := os.Getenv("AIRSTACK_API_KEY")
+				if apiKey == "" {
+					return fmt.Sprintf("Error: AIRSTACK_API_KEY not set.")
+				}
+				client.SetAPIKey(apiKey)
+
+				fname := strings.TrimSpace(input)
+
+				result, err := client.QueryFarcasterAccount(fname)
+				if err != nil {
+					return fmt.Sprintf("Error querying Airstack API: %v", err)
+				}
+
+				// Format the results
+				if len(result.Data.Socials.Social) == 0 && len(result.Data.FarcasterCasts.Cast) == 0 {
+					return "No data found for the provided Farcaster username."
+				}
+
+				output := formatFarcasterData(fname, result)
+				return output
+			}
+		case tea.KeyRunes:
+			m.input += string(msg.Runes)
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.input) > 0 {
+				m.input = m.input[:len(m.input)-1]
+			}
+		}
+	case string:
+		m.content = msg
+		m.state = "display"
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m model) viewFarcaster() string {
+	s := titleStyle.Render("Check Farcaster Account") + "\n\n"
+	s += "Enter Farcaster username or press Esc to cancel:\n"
+	s += inputStyle.Render(m.input)
+	if m.content != "" {
+		s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+	}
+	return s
+}
+
+func (m model) viewDisplay() string {
+	s := m.content + "\n\nPress Enter to return to menu..."
+	return s
+}
+
+func formatFarcasterData(fname string, result *airstack.FarcasterResponse) string {
+	var sb strings.Builder
+
+	social := result.Data.Socials.Social
+	casts := result.Data.FarcasterCasts.Cast
+
+	sb.WriteString(fmt.Sprintf("Results for Farcaster user '%s':\n\n", fname))
+
+	if len(social) > 0 {
+		s := social[0]
+		sb.WriteString("Profile Information:\n")
+		sb.WriteString(fmt.Sprintf("Profile Name   : %s\n", s.ProfileName))
+		sb.WriteString(fmt.Sprintf("Follower Count : %d\n", s.FollowerCount))
+		sb.WriteString(fmt.Sprintf("Following Count: %d\n", s.FollowingCount))
+		sb.WriteString(fmt.Sprintf("FarScore       : %.2f\n", s.FarcasterScore.FarScore))
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("No profile information found.\n\n")
+	}
+
+	if len(casts) > 0 {
+		sb.WriteString("Recent Casts:\n")
+		for i, cast := range casts {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, cast.Text))
+		}
+	} else {
+		sb.WriteString("No recent casts found.\n")
+	}
+
+	return sb.String()
 }
