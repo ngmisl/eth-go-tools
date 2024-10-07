@@ -3,11 +3,14 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
 
 	"example.com/ethgotools/airstack"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/joho/godotenv"
 
@@ -22,8 +25,10 @@ type model struct {
 	quitting bool
 	content  string
 	input    string
+	input2   string
+	input3   string
 	state    string
-	// err      error
+	step     int
 }
 
 var titleStyle = lipgloss.NewStyle().
@@ -45,6 +50,8 @@ func initialModel() model {
 			"Convert Private Key to Address",
 			"Generate New Private Key",
 			"Check Farcaster Account",
+			"Sign Message with Private Key",
+			"Verify Signature",
 			"Quit",
 		},
 		state: "menu",
@@ -75,19 +82,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "convert":
 		return m.updateConvert(msg)
 	case "generate":
-		return m.updateGenerate(msg)
+		return m.updateGenerate()
 	case "farcaster":
 		return m.updateFarcaster(msg)
+	case "sign":
+		return m.updateSign(msg)
+	case "verify":
+		return m.updateVerify(msg)
 	case "display":
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
 			m.state = "menu"
 			m.content = ""
+			m.input = ""
+			m.input2 = ""
+			m.input3 = ""
+			m.step = 0
 			return m, nil
 		}
-		return m, nil
-	default:
-		return m, nil
 	}
+	return m, nil
 }
 
 func (m model) View() string {
@@ -100,6 +113,10 @@ func (m model) View() string {
 		return m.viewGenerate()
 	case "farcaster":
 		return m.viewFarcaster()
+	case "sign":
+		return m.viewSign()
+	case "verify":
+		return m.viewVerify()
 	case "display":
 		return m.viewDisplay()
 	default:
@@ -136,6 +153,19 @@ func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input = ""
 				m.content = ""
 			case 3:
+				m.state = "sign"
+				m.input = ""
+				m.input2 = ""
+				m.content = ""
+				m.step = 0
+			case 4:
+				m.state = "verify"
+				m.input = ""
+				m.input2 = ""
+				m.input3 = ""
+				m.content = ""
+				m.step = 0
+			case 5:
 				m.quitting = true
 				return m, tea.Quit
 			}
@@ -205,7 +235,7 @@ func (m model) viewConvert() string {
 	return s
 }
 
-func (m model) updateGenerate(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) updateGenerate() (tea.Model, tea.Cmd) {
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {
 		m.content = fmt.Sprintf("Error generating private key: %v", err)
@@ -248,7 +278,7 @@ func (m model) updateFarcaster(msg tea.Msg) (tea.Model, tea.Cmd) {
 				client := airstack.NewClient()
 				apiKey := os.Getenv("AIRSTACK_API_KEY")
 				if apiKey == "" {
-					return fmt.Sprintf("Error: AIRSTACK_API_KEY not set.")
+					return "Error: AIRSTACK_API_KEY not set."
 				}
 				client.SetAPIKey(apiKey)
 
@@ -291,6 +321,234 @@ func (m model) viewFarcaster() string {
 		s += "\n\n" + m.content + "\n\nPress Enter to continue..."
 	}
 	return s
+}
+
+func (m model) updateSign(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			m.input = ""
+			m.input2 = ""
+			m.content = ""
+			m.step = 0
+			m.state = "menu"
+		case tea.KeyEnter:
+			if m.step == 0 {
+				if len(m.input) == 0 {
+					m.content = "Error: Private key cannot be empty."
+					return m, nil
+				}
+				// Validate private key
+				_, err := crypto.HexToECDSA(strings.TrimSpace(m.input))
+				if err != nil {
+					m.content = "Error: Invalid private key format."
+					return m, nil
+				}
+				m.step = 1
+			} else if m.step == 1 {
+				if len(m.input2) == 0 {
+					m.content = "Error: Message cannot be empty."
+					return m, nil
+				}
+				// Sign the message
+				privateKeyHex := strings.TrimSpace(m.input)
+				message := m.input2
+				signature, err := signMessage(privateKeyHex, message)
+				if err != nil {
+					m.content = fmt.Sprintf("Error signing message: %v", err)
+					return m, nil
+				}
+				m.content = fmt.Sprintf("Signature:\n%s", signature)
+				m.state = "display"
+				return m, nil
+			}
+		case tea.KeyRunes:
+			if m.step == 0 {
+				m.input += string(msg.Runes)
+			} else if m.step == 1 {
+				m.input2 += string(msg.Runes)
+			}
+		case tea.KeyBackspace, tea.KeyDelete:
+			if m.step == 0 && len(m.input) > 0 {
+				m.input = m.input[:len(m.input)-1]
+			} else if m.step == 1 && len(m.input2) > 0 {
+				m.input2 = m.input2[:len(m.input2)-1]
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewSign() string {
+	s := titleStyle.Render("Sign Message with Private Key") + "\n\n"
+	if m.step == 0 {
+		s += "Enter your Ethereum private key (in hex format) or press Esc to cancel:\n"
+		s += inputStyle.Render(m.input)
+		if m.content != "" {
+			s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+		}
+	} else if m.step == 1 {
+		s += "Enter the message you wish to sign or press Esc to cancel:\n"
+		s += inputStyle.Render(m.input2)
+		if m.content != "" {
+			s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+		}
+	}
+	return s
+}
+
+func (m model) updateVerify(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			m.input = ""
+			m.input2 = ""
+			m.input3 = ""
+			m.content = ""
+			m.step = 0
+			m.state = "menu"
+		case tea.KeyEnter:
+			if m.step == 0 {
+				if len(m.input) == 0 {
+					m.content = "Error: Message cannot be empty."
+					return m, nil
+				}
+				m.step = 1
+			} else if m.step == 1 {
+				if len(m.input2) == 0 {
+					m.content = "Error: Signature cannot be empty."
+					return m, nil
+				}
+				m.step = 2
+			} else if m.step == 2 {
+				if len(m.input3) == 0 {
+					m.content = "Error: Ethereum address cannot be empty."
+					return m, nil
+				}
+				// Verify the signature
+				message := m.input
+				signature := m.input2
+				address := m.input3
+				valid, err := verifySignature(message, signature, address)
+				if err != nil {
+					m.content = fmt.Sprintf("Error verifying signature: %v", err)
+					return m, nil
+				}
+				if valid {
+					m.content = "Signature is valid."
+				} else {
+					m.content = "Signature is invalid."
+				}
+				m.state = "display"
+				return m, nil
+			}
+		case tea.KeyRunes:
+			if m.step == 0 {
+				m.input += string(msg.Runes)
+			} else if m.step == 1 {
+				m.input2 += string(msg.Runes)
+			} else if m.step == 2 {
+				m.input3 += string(msg.Runes)
+			}
+		case tea.KeyBackspace, tea.KeyDelete:
+			if m.step == 0 && len(m.input) > 0 {
+				m.input = m.input[:len(m.input)-1]
+			} else if m.step == 1 && len(m.input2) > 0 {
+				m.input2 = m.input2[:len(m.input2)-1]
+			} else if m.step == 2 && len(m.input3) > 0 {
+				m.input3 = m.input3[:len(m.input3)-1]
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m model) viewVerify() string {
+	s := titleStyle.Render("Verify Signature") + "\n\n"
+	if m.step == 0 {
+		s += "Enter the message that was signed or press Esc to cancel:\n"
+		s += inputStyle.Render(m.input)
+		if m.content != "" {
+			s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+		}
+	} else if m.step == 1 {
+		s += "Enter the signature (in hex format) or press Esc to cancel:\n"
+		s += inputStyle.Render(m.input2)
+		if m.content != "" {
+			s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+		}
+	} else if m.step == 2 {
+		s += "Enter the Ethereum address of the signer or press Esc to cancel:\n"
+		s += inputStyle.Render(m.input3)
+		if m.content != "" {
+			s += "\n\n" + m.content + "\n\nPress Enter to continue..."
+		}
+	}
+	return s
+}
+
+func signMessage(privateKeyHex, message string) (string, error) {
+	// Convert private key from hex string to ECDSA private key
+	privateKey, err := crypto.HexToECDSA(privateKeyHex)
+	if err != nil {
+		return "", fmt.Errorf("invalid private key: %v", err)
+	}
+
+	// Hash the message
+	msgHash := sha256.Sum256([]byte(message))
+
+	// Sign the hash
+	signatureBytes, err := crypto.Sign(msgHash[:], privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign message: %v", err)
+	}
+
+	// Return the hex-encoded signature
+	signatureHex := hexutil.Encode(signatureBytes)
+	return signatureHex, nil
+}
+
+func verifySignature(message, signatureHex, addressHex string) (bool, error) {
+	// Validate the address
+	if !common.IsHexAddress(addressHex) {
+		return false, fmt.Errorf("invalid Ethereum address")
+	}
+	address := common.HexToAddress(addressHex)
+
+	// Decode the signature
+	signatureBytes, err := hexutil.Decode(signatureHex)
+	if err != nil {
+		return false, fmt.Errorf("invalid signature format")
+	}
+	if len(signatureBytes) != 65 {
+		return false, fmt.Errorf("invalid signature length")
+	}
+
+	// Hash the message
+	msgHash := sha256.Sum256([]byte(message))
+
+	// Remove recovery ID (last byte)
+	sigPublicKey, err := crypto.Ecrecover(msgHash[:], signatureBytes)
+	if err != nil {
+		return false, fmt.Errorf("failed to recover public key: %v", err)
+	}
+
+	// Convert to ECDSA public key
+	pubKey, err := crypto.UnmarshalPubkey(sigPublicKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to unmarshal public key: %v", err)
+	}
+
+	// Generate address from public key
+	recoveredAddr := crypto.PubkeyToAddress(*pubKey)
+
+	// Compare recovered address with provided address
+	if recoveredAddr == address {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (m model) viewDisplay() string {
