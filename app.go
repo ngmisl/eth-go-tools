@@ -354,7 +354,7 @@ func (m model) updateSign(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Sign the message
 				privateKeyHex := strings.TrimSpace(m.input)
 				message := m.input2
-				signature, err := signMessage(privateKeyHex, message)
+				signature, err := SignMessage(privateKeyHex, message)
 				if err != nil {
 					m.content = fmt.Sprintf("Error signing message: %v", err)
 					return m, nil
@@ -431,7 +431,7 @@ func (m model) updateVerify(msg tea.Msg) (tea.Model, tea.Cmd) {
 				message := m.input
 				signature := m.input2
 				address := m.input3
-				valid, err := verifySignature(message, signature, address)
+				valid, err := VerifySignature(message, signature, address)
 				if err != nil {
 					m.content = fmt.Sprintf("Error verifying signature: %v", err)
 					return m, nil
@@ -489,7 +489,7 @@ func (m model) viewVerify() string {
 	return s
 }
 
-func signMessage(privateKeyHex, message string) (string, error) {
+func SignMessage(privateKeyHex, message string) (string, error) {
 	// Convert private key from hex string to ECDSA private key
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
@@ -510,7 +510,7 @@ func signMessage(privateKeyHex, message string) (string, error) {
 	return signatureHex, nil
 }
 
-func verifySignature(message, signatureHex, addressHex string) (bool, error) {
+func VerifySignature(message, signatureHex, addressHex string) (bool, error) {
 	// Validate the address
 	if !common.IsHexAddress(addressHex) {
 		return false, fmt.Errorf("invalid Ethereum address")
