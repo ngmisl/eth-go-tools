@@ -18,6 +18,7 @@
     "Pubkey",
     "representa",
     "textinput",
-    "Toolset"
+    "Toolset",
+    "yournewprivatekeyhex"
   ]
 }

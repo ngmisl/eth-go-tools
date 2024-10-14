@@ -119,7 +119,7 @@ Upon running, you'll be presented with an interactive menu to select the desired
 
 **Example:**
 
-```
+```Bash
 Ethereum Address: 0xYourEthereumAddressHere
 Press Enter to continue...
 ```
@@ -137,7 +137,7 @@ Press Enter to continue...
 
 **Example:**
 
-```
+```Bash
 New Private Key: yournewprivatekeyhex
 Corresponding Ethereum Address: 0xYourEthereumAddressHere
 
@@ -159,7 +159,7 @@ Press Enter to continue...
 
 **Example:**
 
-```
+```Bash
 Results for Farcaster user 'username':
 
 Profile Information:
@@ -188,7 +188,7 @@ Press Enter to continue...
 
 **Example:**
 
-```
+```Bash
 Signature:
 0xYourSignatureHere
 
@@ -209,15 +209,15 @@ Press Enter to return to menu...
 
 **Example:**
 
-```
+```Bash
 Signature is valid.
 
 Press Enter to return to menu...
 ```
 
-_or_
+or
 
-```
+```Bash
 Signature is invalid.
 
 Press Enter to return to menu...
