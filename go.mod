@@ -5,7 +5,7 @@ go 1.22.4
 require (
 	github.com/charmbracelet/bubbletea v1.1.1
 	github.com/charmbracelet/lipgloss v0.13.0
-	github.com/ethereum/go-ethereum v1.14.11
+	github.com/ethereum/go-ethereum v1.14.12
 	github.com/joho/godotenv v1.5.1
 )
 
